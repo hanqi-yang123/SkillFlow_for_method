@@ -41,6 +41,7 @@ from harbor.models.task.paths import TaskPaths
 from harbor.models.trial.result import TrialResult
 from harbor.trial.hooks import TrialHookEvent
 
+from libs.method_evolution import MethodPatchEvolver
 from libs.skill_evolution.patcher import (
     CompactionConfig,
     SkillPatchEvolver,
@@ -49,12 +50,36 @@ from libs.skill_evolution.patcher import (
     TrajectoryCompactor,
     ensure_standard_trajectory,
 )
+from libs.workflow_evolution import WorkflowPatchEvolver
+
+
+EVOLUTION_SETTINGS: dict[str, dict[str, Any]] = {
+    "skill": {
+        "state_root": "shared_skills",
+        "mount_targets": None,
+        "evolver": SkillPatchEvolver,
+        "template": Path("shared_skills_template/skills"),
+    },
+    "method": {
+        "state_root": "shared_methods",
+        "mount_targets": ["/mnt/learning"],
+        "evolver": MethodPatchEvolver,
+        "template": Path("shared_methods_template"),
+    },
+    "workflow": {
+        "state_root": "shared_workflows",
+        "mount_targets": ["/root/.claude/workflows"],
+        "evolver": WorkflowPatchEvolver,
+        "template": Path("shared_workflows_template"),
+    },
+}
 
 
 @dataclass
 class RunnerConfig:
     """主调度器配置。"""
     config_path: Path
+    evolution_kind: str = "skill"
     run_root_dir: Path | None = None
     max_parallel_groups: int = 2
     dry_run: bool = False
@@ -462,13 +487,14 @@ def prepare_shared_skills_dir(
     job_dir: Path,
     group_name: str,
     project_template_dir: Path | None,
+    state_root: str = "shared_skills",
 ) -> Path:
     """
     计算并准备共享技能目录。
     目录结构：jobs/<run_root>/<job_name>/shared_skills/<group_name>/
     如果目录为空且提供了 project_template_dir，则复制模板内容。
     """
-    shared_dir = job_dir / "shared_skills" / group_name
+    shared_dir = job_dir / state_root / group_name
     shared_dir.mkdir(parents=True, exist_ok=True)
 
     # 若目录为空且模板存在，则复制
@@ -494,6 +520,7 @@ def build_group_job_config(
     force_shared_env: bool,
     project_template_dir: Path | None,
     copy_task_skills: bool,
+    evolution_kind: str = "skill",
 ) -> JobConfig:
     """
     基于 base_config 构造单个 group 的 JobConfig。
@@ -503,8 +530,6 @@ def build_group_job_config(
     - orchestrator.n_concurrent_trials: 1（串行）
     - environment: 强制启用 SharedSkillsDockerEnvironment（若 force_shared_env）
     """
-    import copy
-
     # 深拷贝 base_config dict
     config_dict = base_config.model_dump()
     dataset_root = resolve_dataset_path(dataset_path)
@@ -533,11 +558,22 @@ def build_group_job_config(
     env = config_dict.get("environment") or {}
     if force_shared_env and not env.get("import_path"):
         env["import_path"] = "libs.terminus_env.environments.shared_skills_env:SharedSkillsDockerEnvironment"
+    if env.get("import_path") == "libs.terminus_env.environments.shared_skills_env:SharedSkillsDockerEnvironment":
+        settings = EVOLUTION_SETTINGS[evolution_kind]
         kwargs = env.get("kwargs") or {}
         kwargs["project_template_dir"] = str(project_template_dir) if project_template_dir else None
         kwargs["copy_task_skills"] = copy_task_skills
+        kwargs["shared_skills_root"] = settings["state_root"]
+        if settings["mount_targets"] is not None:
+            kwargs["mount_targets"] = settings["mount_targets"]
         env["kwargs"] = kwargs
         config_dict["environment"] = env
+
+    if evolution_kind == "workflow":
+        for agent in config_dict.get("agents") or []:
+            agent_env = agent.get("env") or {}
+            agent_env.setdefault("SKILLFLOW_EXECUTABLE_WORKFLOW", "dynamic-task-solver")
+            agent["env"] = agent_env
 
     return JobConfig.model_validate(config_dict)
 
@@ -578,6 +614,7 @@ def run_group_job(
         job_dir,
         group_name,
         runner_cfg.project_template_dir,
+        state_root=EVOLUTION_SETTINGS[runner_cfg.evolution_kind]["state_root"],
     )
 
     # 构造 group job config
@@ -591,6 +628,7 @@ def run_group_job(
         runner_cfg.force_shared_env,
         runner_cfg.project_template_dir,
         runner_cfg.copy_task_skills,
+        runner_cfg.evolution_kind,
     )
 
     # 从第一个 agent 获取 patch LLM 配置（优先 kwargs，其次 env）
@@ -617,7 +655,8 @@ def run_group_job(
             max_obs_chars=runner_cfg.max_obs_chars,
         )
     )
-    evolver = SkillPatchEvolver(
+    evolver_class = EVOLUTION_SETTINGS[runner_cfg.evolution_kind]["evolver"]
+    evolver = evolver_class(
         model_name=patch_model_name,
         api_base=api_base,
         api_key=api_key,
@@ -749,7 +788,7 @@ def run_group_job(
             (debug_dir / "changes.diff").write_text(diff_text, encoding="utf-8")
 
         append_patch_history(
-            job_dir / "skill_patch_history.jsonl",
+            job_dir / f"{runner_cfg.evolution_kind}_patch_history.jsonl",
             {
                 "trial_name": trial_name,
                 "task_name": task_name,
@@ -854,6 +893,8 @@ def run_group_in_subprocess(
         str(runner_cfg.patch_temperature),
         "--patch-max-tokens",
         str(runner_cfg.patch_max_tokens),
+        "--evolution-kind",
+        runner_cfg.evolution_kind,
     ]
     if runner_cfg.dry_run:
         args.append("--dry-run")
@@ -912,6 +953,12 @@ def main() -> None:
     parser.add_argument("--max-obs-chars", type=int, default=3000, help="单条环境输出最大字符数")
     parser.add_argument("--patch-temperature", type=float, default=0.2, help="LLM patch 温度")
     parser.add_argument("--patch-max-tokens", type=int, default=16384, help="LLM patch 最大输出 tokens；Kimi 之类模型建议适当调大")
+    parser.add_argument(
+        "--evolution-kind",
+        choices=sorted(EVOLUTION_SETTINGS),
+        default="skill",
+        help="Artifact to evolve: skill, method, or executable workflow",
+    )
 
     # 子进程模式参数
     parser.add_argument("--only-group", type=str, default=None, help="子进程模式：仅运行指定 group")
@@ -921,6 +968,7 @@ def main() -> None:
 
     runner_cfg = RunnerConfig(
         config_path=args.config,
+        evolution_kind=args.evolution_kind,
         run_root_dir=args.run_root_dir,
         max_parallel_groups=args.max_parallel_groups,
         dry_run=args.dry_run,
@@ -935,7 +983,7 @@ def main() -> None:
 
     # 默认 project_template_dir
     if runner_cfg.project_template_dir is None:
-        default_template = ROOT_DIR / "shared_skills_template" / "skills"
+        default_template = ROOT_DIR / EVOLUTION_SETTINGS[runner_cfg.evolution_kind]["template"]
         if default_template.exists():
             runner_cfg.project_template_dir = default_template
 
