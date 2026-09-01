@@ -70,13 +70,45 @@ python iterative_shared_skills_runner.py
 
 The iterative setting uses `shared_skills_template/skills` as the default initial shared-skill directory.
 
+The runner can also compare three single-artifact evolution modes:
+
+```bash
+python iterative_shared_skills_runner.py --evolution-kind skill
+python iterative_shared_skills_runner.py --evolution-kind method
+python iterative_shared_skills_runner.py --evolution-kind workflow
+```
+
+Method mode uses the Haitun `run_flow` adapter. Build its runtime image from a
+sibling `haitun-agent` checkout, then use `configs/method.yaml`:
+
+```bash
+bash docker/haitun-agent/build.sh
+python iterative_shared_skills_runner.py --config configs/method.yaml --evolution-kind method
+```
+
+Their mutation budgets are intentionally symmetric: Skill may update only
+`skillflow-skill/SKILL.md`, Method only
+`skillflow-method/skillflow-method.workflow`, and executable Workflow only
+`dynamic-task-solver.js`. Deletions and additional files are rejected as a
+whole patch. Method and executable Workflow have no imposed line, agent-count,
+or graph-topology limits.
+
+Workflow mode sets `SKILLFLOW_EXECUTABLE_WORKFLOW=dynamic-task-solver`, mounts
+the JavaScript artifact in Claude's Workflow directory, and writes a session
+permission rule denying `Skill(dynamic-task-solver)`. This prevents the parent
+or a spawned agent from recursively treating the executable Workflow as a
+same-name Skill while leaving the top-level Workflow invocation available.
+
 ## Repository Layout
 
 - `configs/`: example configs for baseline and iterative runs
 - `docker/harbor-cli-base/`: base image with preinstalled agent CLIs
+- `docker/haitun-agent/`: reproducible Haitun Method runtime overlay
 - `analysis/`: result summarization and plotting scripts
 - `utils/prebuild_task_images.py`: prebuild task images and write `docker_image` into `task.toml`
 - `shared_skills_template/`: initial shared-skill template
+- `shared_methods_template/`: initial single-Method template
+- `shared_workflows_template/`: initial executable-Workflow template
 
 ## Notes
 

@@ -1,0 +1,27 @@
+job_name: iter-example-method
+
+agents:
+  - import_path: libs.harbor_noinstall_agents.agents:NoInstallHaitunMethod
+    model_name: anthropic/claude-sonnet-4.5
+    env:
+      PSI_AI_PROVIDER: anthropic
+      PSI_AI_MODEL: claude-sonnet-4.5
+      PSI_AI_API_KEY: "YOUR_API_KEY"
+      ANTHROPIC_API_KEY: "YOUR_API_KEY"
+    kwargs: {}
+
+environment:
+  allow_internet: true
+  force_build: false
+  delete: false
+  kwargs:
+    overlay_base_image: skillflow/haitun-agent-method:ubuntu24.04
+    base_image_from: skillflow/harbor-cli-base:ubuntu24.04
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 1
+  quiet: false
+
+datasets:
+  - path: test_tasks/Financial-Statement-Rolling

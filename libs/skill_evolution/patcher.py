@@ -317,97 +317,38 @@ class SkillPatchEvolver:
     }
     """
 
-    SYSTEM_PROMPT = """You are a skill evolution assistant that iterates on a shared skill library after each task run.
+    ARTIFACT_PATH = "skillflow-skill/SKILL.md"
 
-A skill is a reusable capability package, not a task-specific note. Improve the library so a future agent can solve similar tasks faster, more reliably, and with fewer failed attempts.
+    SYSTEM_PROMPT = """You evolve one reusable Skill from completed trial evidence.
 
-Hard structural rules (treat these as requirements, not suggestions):
-- A new skill should normally live in its own capability-named directory, for example `fill-pdf-forms/` or `api-debugging/`.
-- Every skill directory must contain `SKILL.md` at its root.
-- `SKILL.md` must begin at the first character of the file with YAML frontmatter in exactly this shape:
-  ---
-  name: <skill-name>
-  description: <what the skill does and when to use it>
-  ---
-- The frontmatter may contain exactly two keys: `name` and `description`. Do not add any other metadata keys.
-- After the closing `---`, write normal Markdown instructions. Prefer starting the body with `# <Readable Title>`.
-- Put executable helpers only in `scripts/`.
-- Put long-form documentation, schemas, API notes, and detailed examples only in `references/`.
-- Put copyable templates or non-context assets only in `assets/`.
-- Do not create empty placeholder files or directories.
-- Do not create README, CHANGELOG, INSTALLATION_GUIDE, QUICK_REFERENCE, or any process notes.
-- If you add files under `scripts/` or `references/`, `SKILL.md` must explicitly tell a future agent when to run or read them.
-- Keep references one hop away from `SKILL.md`; avoid deep navigation or nested indirection.
-- If an existing skill already covers the capability, update that skill instead of creating a parallel duplicate.
+The entire learned state must remain in exactly `skillflow-skill/SKILL.md`.
+You may replace that file's full contents, but may not create, update, rename, or
+delete any other file. Do not emit scripts, references, assets, or a second Skill.
 
-Design principles:
-- Be concise. Add only information that is non-obvious, reusable, and worth the context cost.
-- Generalize from the trace, but do not merely restate it. Infer the reusable workflow, decision points, validation steps, tool patterns, anti-patterns, and troubleshooting notes that should change a future agent's behavior.
-- Prefer verifier evidence, failed tests, and concrete execution results over the agent's self-report when they conflict.
-- Prefer minimal edits to the existing library over broad rewrites.
-- Use progressive disclosure. Keep `SKILL.md` focused and short; move detailed material into `references/` or `scripts/` only when it improves reuse.
-- Avoid duplication across `SKILL.md` and `references/`.
-- Use `scripts/` for deterministic, fragile, or repeatedly rediscovered code patterns.
-- Use `references/` for detailed schemas, API notes, long examples, or variant-specific details.
-- Use `assets/` only for files that the agent should copy or use directly in outputs.
-- The `description` field must explain both what the skill does and when to use it, including trigger contexts.
-- The `SKILL.md` body should be imperative, operational, and easy to scan. Prefer workflows, decision rules, and concise examples over long prose.
-- Keep `SKILL.md` under 500 lines when possible.
+The file must remain a valid Skill: begin with YAML frontmatter containing
+`name` and `description`, then provide operational Markdown instructions.
+Prefer verifier evidence and concrete execution results over the agent's
+self-report. Generalize useful workflows, decision rules, validation steps, and
+failure recovery from the trace. Return an empty patch if the evidence does not
+justify a reusable change.
 
-When interpreting the trace:
-- Identify where the agent's reasoning or chosen strategy was wrong, incomplete, or too brittle.
-- Treat repeated failures, failed tests, verifier mismatches, and dead-end tool choices as signals for what future agents should avoid.
-- If the agent succeeded after trial and error, capture the final working pattern, the discarded bad paths, and the key decision rule that separates them.
-- If the agent failed, capture the missing knowledge, validation steps, troubleshooting workflow, and the most plausible alternative approach or escalation path that should be tried earlier next time.
-- Prefer decision rules such as "if X pattern appears, do Y instead of Z" over vague advice.
-- If the trace does not justify a meaningful reusable change, return an empty patch and explain why.
+Return exactly one JSON object with `summary`, `upsert_files`, and
+`delete_paths`. `upsert_files` is either empty or contains only
+`skillflow-skill/SKILL.md`; `delete_paths` is always empty."""
 
-Output requirements:
-- Return exactly one JSON object with keys: `summary`, `upsert_files`, `delete_paths`.
-- `upsert_files` must map relative file paths to full file contents.
-- `delete_paths` must only include paths that should truly be removed as obsolete.
-- Do not wrap the JSON in commentary.
-"""
+    USER_PROMPT_TEMPLATE = """# Single-Skill evolution task
 
-    USER_PROMPT_TEMPLATE = """# Shared skill evolution task
+Update only `skillflow-skill/SKILL.md`.
 
-You are updating the shared skill library rooted at the current shared-skills directory.
-All file paths in the patch must be relative to that root.
-
-## Required skill layout
-When creating a new skill, use this default structure unless an existing skill for the same capability already exists:
-
-```text
-skill-name/
-├── SKILL.md
-├── scripts/      # optional executable helpers
-├── references/   # optional reference docs loaded when needed
-└── assets/       # optional templates or files used in final outputs
-```
-
-`SKILL.md` must begin exactly like this, with nothing before the first `---`:
-
-```markdown
----
-name: skill-name
-description: Explain what the skill does and when to use it. Include trigger scenarios, file types, or task patterns.
----
-
-# Readable Title
-```
-
-Only `name` and `description` are allowed in the frontmatter.
-
-## Existing skill library
-### Tree
+## Current artifact tree
 {tree_json}
 
-### Existing files
+## Current artifact contents
 {files_block}
 
-## Trial summary
-- Task name: {task_name}
-- Task source: {task_source}
+## Trial evidence
+- Task: {task_name}
+- Family: {task_source}
 - Verifier passed: {verifier_passed}
 - Reward: {reward}
 - Exception: {exception_info}
@@ -419,54 +360,17 @@ Only `name` and `description` are allowed in the frontmatter.
 ## Compacted execution trace
 {trajectory_json}
 
-## Internal workflow to follow
-1. Derive the reusable capability from this trace.
-2. Compare the agent's apparent plan against verifier outcomes, failed tests, and concrete tool results. Explicitly identify any wrong assumptions, brittle choices, or dead-end strategies.
-3. Identify the strongest trigger phrases or task types this skill should support.
-4. Extract the minimal reusable workflow, validation steps, failure-prevention guidance, and anti-patterns to avoid.
-5. If the current approach failed or was brittle, infer the next-best direction, fallback, or escalation path that a future agent should try earlier, even if that exact fix was not fully executed in the trace.
-6. Convert those lessons into reusable decision rules, such as when to switch tools, inspect lower-level formats, add verification earlier, or abandon a high-level API.
-7. Decide whether the knowledge belongs in an existing `SKILL.md`, a new skill directory, `references/`, `scripts/`, or `assets/`.
-8. Keep the patch small, high-signal, and generalized.
-
-## Skill authoring checklist
-- Do not encode task-specific filled values, IDs, or one-off outputs unless they belong in a reusable template.
-- Prefer one skill directory per capability.
-- If creating a new skill, create `skill-name/SKILL.md` instead of writing a bare `SKILL.md` at the library root.
-- Put executable code in `skill-name/scripts/...`.
-- Put long documentation or variant-specific details in `skill-name/references/...`.
-- Put templates or output assets in `skill-name/assets/...`.
-- If you add `scripts/` or `references/`, update `SKILL.md` so a future agent knows when to use them.
-- In `SKILL.md`, put "when to use" guidance in `description`, not as a separate metadata field.
-- In the body, provide:
-  - a short overview of the workflow
-  - clear sequential steps or a decision tree when useful
-  - validation or verification steps when reusable
-  - concise troubleshooting notes for the important failure modes seen in the trace
-  - explicit anti-patterns or "do not rely on this when..." guidance when the trace shows a tempting but wrong path
-  - a fallback or alternative direction when the trace suggests a better next attempt for future runs
-  - explicit pointers to `scripts/` or `references/` if you add them
-- Use imperative style.
-- Keep `SKILL.md` concise. Move long or variant-specific content into `references/`.
-- Only add scripts when deterministic code is genuinely reusable and brittle enough to deserve bundling.
-- If the current library already contains a relevant skill, update it instead of creating a parallel duplicate.
-
-## Output contract
-Return exactly one JSON object matching this shape:
+Return exactly this JSON shape and no surrounding prose:
 
 ```json
 {{
-  "summary": "why this patch helps future runs",
+  "summary": "brief evidence-based rationale",
   "upsert_files": {{
-    "skill-name/SKILL.md": "---\nname: skill-name\ndescription: what it does and when to use it\n---\n\n# Readable Title\n...",
-    "skill-name/scripts/example.py": "#!/usr/bin/env python3\n...",
-    "skill-name/references/details.md": "# Details\n..."
+    "skillflow-skill/SKILL.md": "---\nname: skillflow-skill\ndescription: reusable guidance and when to use it\n---\n\n# SkillFlow Skill\n..."
   }},
   "delete_paths": []
 }}
 ```
-
-Return no prose before or after the JSON object.
 """
 
     def __init__(
@@ -484,6 +388,38 @@ Return no prose before or after the JSON object.
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.extra_headers = extra_headers or {}
+
+    def _constrain_to_artifact(self, patch: SkillPatchResult) -> SkillPatchResult:
+        """Reject a patch that attempts to mutate anything except ARTIFACT_PATH."""
+        invalid_paths = sorted(set(patch.upsert_files) - {self.ARTIFACT_PATH})
+        if patch.delete_paths or invalid_paths:
+            reasons: list[str] = []
+            if invalid_paths:
+                reasons.append(f"unexpected paths: {', '.join(invalid_paths)}")
+            if patch.delete_paths:
+                reasons.append("deletions are not permitted")
+            return SkillPatchResult(
+                summary=f"Rejected out-of-scope patch ({'; '.join(reasons)}). {patch.summary}",
+                upsert_files={},
+                delete_paths=[],
+                attempt_count=patch.attempt_count,
+                attempt_modes=patch.attempt_modes,
+                successful_attempt=patch.successful_attempt,
+                successful_prompt_mode=patch.successful_prompt_mode,
+                successful_attempt_kind=patch.successful_attempt_kind,
+            )
+
+        artifact = patch.upsert_files.get(self.ARTIFACT_PATH)
+        return SkillPatchResult(
+            summary=patch.summary,
+            upsert_files={self.ARTIFACT_PATH: artifact} if artifact is not None else {},
+            delete_paths=[],
+            attempt_count=patch.attempt_count,
+            attempt_modes=patch.attempt_modes,
+            successful_attempt=patch.successful_attempt,
+            successful_prompt_mode=patch.successful_prompt_mode,
+            successful_attempt_kind=patch.successful_attempt_kind,
+        )
 
     @staticmethod
     def _strip_json_code_fence(text: str) -> str:
@@ -892,15 +828,17 @@ Return no prose before or after the JSON object.
                 if isinstance(raw_delete_paths, list):
                     delete_paths = [str(path) for path in raw_delete_paths]
 
-                return SkillPatchResult(
-                    summary=summary,
-                    upsert_files=upsert_files,
-                    delete_paths=delete_paths,
-                    attempt_count=attempt_count,
-                    attempt_modes=attempt_modes,
-                    successful_attempt=attempt_count,
-                    successful_prompt_mode=current_prompt_mode,
-                    successful_attempt_kind=current_attempt_kind,
+                return self._constrain_to_artifact(
+                    SkillPatchResult(
+                        summary=summary,
+                        upsert_files=upsert_files,
+                        delete_paths=delete_paths,
+                        attempt_count=attempt_count,
+                        attempt_modes=attempt_modes,
+                        successful_attempt=attempt_count,
+                        successful_prompt_mode=current_prompt_mode,
+                        successful_attempt_kind=current_attempt_kind,
+                    )
                 )
             except Exception as e:
                 last_error = e
