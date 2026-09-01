@@ -2,12 +2,14 @@ job_name: iter-example-method
 
 agents:
   - import_path: libs.harbor_noinstall_agents.agents:NoInstallHaitunMethod
-    model_name: anthropic/claude-sonnet-4.5
+    # Set these placeholders to the same model/provider used by the Skill and
+    # Workflow arms. This example intentionally does not choose a model.
+    model_name: YOUR_PROVIDER/YOUR_MODEL
     env:
-      PSI_AI_PROVIDER: anthropic
-      PSI_AI_MODEL: claude-sonnet-4.5
+      PSI_AI_PROVIDER: YOUR_PROVIDER
+      PSI_AI_MODEL: YOUR_MODEL
       PSI_AI_API_KEY: "YOUR_API_KEY"
-      ANTHROPIC_API_KEY: "YOUR_API_KEY"
+      LLM_API_KEY: "YOUR_API_KEY"
     kwargs: {}
 
 environment:

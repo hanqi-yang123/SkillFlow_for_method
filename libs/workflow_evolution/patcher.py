@@ -1,4 +1,4 @@
-"""Evolve exactly one executable Claude Code Workflow file."""
+"""Evolve one executable Workflow and its private learned resources."""
 
 from __future__ import annotations
 
@@ -6,29 +6,40 @@ from libs.skill_evolution.patcher import SkillPatchEvolver
 
 
 class WorkflowPatchEvolver(SkillPatchEvolver):
-    """Allow evolution to change one JavaScript Workflow and nothing else."""
+    """Evolve a Workflow entry point plus resources in its learned namespace."""
 
     ARTIFACT_PATH = "dynamic-task-solver.js"
+    LEARNED_DIR = "dynamic-task-solver/learned"
 
     SYSTEM_PROMPT = """You evolve one executable Claude Code JavaScript Workflow
 from completed trial evidence.
 
-The only hard artifact restriction is the mutation boundary: `upsert_files` is
-either empty or contains exactly `dynamic-task-solver.js`, and `delete_paths`
-is empty. Do not create, update, rename, or delete any other file.
+You may update the executable entry point `dynamic-task-solver.js` and create,
+update, organize, or delete supporting material anywhere under the private
+`dynamic-task-solver/learned/` directory. Do not write outside those locations
+and do not delete the executable entry point.
 
-Within that JavaScript file, choose any executable workflow graph, length,
-number of agents, topology, prompts, phases, APIs, and recovery strategy
+Within the JavaScript entry point, choose any executable workflow graph,
+length, number of agents, topology, prompts, phases, APIs, and recovery strategy
 supported by the runtime and trial evidence. There is no two-to-three-agent
 rule, line limit, or required linear executor/auditor chain. Return an empty
 patch when the evidence does not justify a change.
+
+Use the JavaScript file for executable orchestration. Use `learned/` for
+reusable scripts, detailed references, examples, schemas, checklists, or other
+learned resources. The Workflow itself cannot read files directly, so when a
+learned file should affect execution, tell an appropriate child agent when and
+how to inspect or run it with ordinary tools from
+`~/.claude/workflows/dynamic-task-solver/learned/`.
 
 Return exactly one JSON object with `summary`, `upsert_files`, and
 `delete_paths`, without surrounding prose."""
 
     USER_PROMPT_TEMPLATE = """# Single executable-Workflow evolution task
 
-Update only `dynamic-task-solver.js`.
+Update the executable Workflow's entry point and private learning space:
+- `dynamic-task-solver.js`
+- `dynamic-task-solver/learned/**`
 
 ## Current artifact tree
 {tree_json}
@@ -50,9 +61,9 @@ Update only `dynamic-task-solver.js`.
 ## Compacted execution trace
 {trajectory_json}
 
-Infer any evidence-backed changes to the executable Workflow. Its internal
-graph and JavaScript source are unrestricted; only the output file boundary is
-fixed.
+Infer evidence-backed changes to the executable Workflow and any supporting
+learned files. Its graph, JavaScript source, learned-file count, and
+learned-file types are unrestricted within its private namespace.
 
 Return exactly this JSON shape and no surrounding prose:
 
@@ -60,9 +71,10 @@ Return exactly this JSON shape and no surrounding prose:
 {{
   "summary": "brief evidence-based rationale",
   "upsert_files": {{
-    "dynamic-task-solver.js": "complete executable JavaScript Workflow source"
+    "dynamic-task-solver.js": "complete executable JavaScript Workflow source",
+    "dynamic-task-solver/learned/example.md": "reusable learned material"
   }},
-  "delete_paths": []
+  "delete_paths": ["dynamic-task-solver/learned/obsolete.md"]
 }}
 ```
 """

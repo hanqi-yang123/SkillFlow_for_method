@@ -70,7 +70,7 @@ python iterative_shared_skills_runner.py
 
 The iterative setting uses `shared_skills_template/skills` as the default initial shared-skill directory.
 
-The runner can also compare three single-artifact evolution modes:
+The runner can also compare three isolated evolution modes:
 
 ```bash
 python iterative_shared_skills_runner.py --evolution-kind skill
@@ -79,19 +79,28 @@ python iterative_shared_skills_runner.py --evolution-kind workflow
 ```
 
 Method mode uses the Haitun `run_flow` adapter. Build its runtime image from a
-sibling `haitun-agent` checkout, then use `configs/method.yaml`:
+sibling `haitun-agent` checkout, set the placeholders in `configs/method.yaml`
+to the same provider and model used by the other experiment arms, then run:
 
 ```bash
 bash docker/haitun-agent/build.sh
 python iterative_shared_skills_runner.py --config configs/method.yaml --evolution-kind method
 ```
 
-Their mutation budgets are intentionally symmetric: Skill may update only
-`skillflow-skill/SKILL.md`, Method only
-`skillflow-method/skillflow-method.workflow`, and executable Workflow only
-`dynamic-task-solver.js`. Deletions and additional files are rejected as a
-whole patch. Method and executable Workflow have no imposed line, agent-count,
-or graph-topology limits.
+Their mutation budgets are intentionally symmetric. Each system may update its
+runtime entry point and use a private `learned/` tree for any number or type of
+supporting resources:
+
+- Skill: `skillflow-skill/SKILL.md` and `skillflow-skill/learned/**`
+- Method: `skillflow-method/skillflow-method.workflow` and
+  `skillflow-method/learned/**`
+- executable Workflow: `dynamic-task-solver.js` and
+  `dynamic-task-solver/learned/**`
+
+Writes outside the corresponding private namespace, path traversal, and entry
+point deletion reject the whole patch. Learned resources may be deleted when
+obsolete. Method and executable Workflow have no imposed line, agent-count, or
+graph-topology limits.
 
 Workflow mode sets `SKILLFLOW_EXECUTABLE_WORKFLOW=dynamic-task-solver`, mounts
 the JavaScript artifact in Claude's Workflow directory, and writes a session

@@ -310,20 +310,20 @@ class SkillSnapshotter:
 class SkillPatchEvolver:
     """
     使用 LLM 根据上一次 trial 的轨迹和完成情况，生成共享技能 patch。
-    patch 格式：{
-        "summary": "...",
-        "upsert_files": {"skill-foo/SKILL.md": "..."},
-        "delete_paths": ["skill-bar/SKILL.md"]
-    }
+    Subclasses define one runtime entry point and one private learned tree.
+    Generated patches may update either location and may delete only learned
+    resources.
     """
 
     ARTIFACT_PATH = "skillflow-skill/SKILL.md"
+    LEARNED_DIR = "skillflow-skill/learned"
 
     SYSTEM_PROMPT = """You evolve one reusable Skill from completed trial evidence.
 
-The entire learned state must remain in exactly `skillflow-skill/SKILL.md`.
-You may replace that file's full contents, but may not create, update, rename, or
-delete any other file. Do not emit scripts, references, assets, or a second Skill.
+You may update the runtime entry point `skillflow-skill/SKILL.md` and create,
+update, organize, or delete supporting material anywhere under the private
+`skillflow-skill/learned/` directory. Do not write outside those two locations
+and do not delete the runtime entry point.
 
 The file must remain a valid Skill: begin with YAML frontmatter containing
 `name` and `description`, then provide operational Markdown instructions.
@@ -332,13 +332,21 @@ self-report. Generalize useful workflows, decision rules, validation steps, and
 failure recovery from the trace. Return an empty patch if the evidence does not
 justify a reusable change.
 
+Use `SKILL.md` for the instructions that must always guide the runtime. Use the
+private `learned/` tree for reusable scripts, detailed references, examples,
+schemas, checklists, or other learned resources. When a learned file should be
+used at runtime, make `SKILL.md` tell the agent when and how to use its path
+relative to the Skill root, such as `learned/example.md`.
+
 Return exactly one JSON object with `summary`, `upsert_files`, and
-`delete_paths`. `upsert_files` is either empty or contains only
-`skillflow-skill/SKILL.md`; `delete_paths` is always empty."""
+`delete_paths`. Paths may target only `skillflow-skill/SKILL.md` or descendants
+of `skillflow-skill/learned/`; deletion is allowed only inside `learned/`."""
 
     USER_PROMPT_TEMPLATE = """# Single-Skill evolution task
 
-Update only `skillflow-skill/SKILL.md`.
+Update the Skill's runtime entry point and private learning space:
+- `skillflow-skill/SKILL.md`
+- `skillflow-skill/learned/**`
 
 ## Current artifact tree
 {tree_json}
@@ -366,9 +374,10 @@ Return exactly this JSON shape and no surrounding prose:
 {{
   "summary": "brief evidence-based rationale",
   "upsert_files": {{
-    "skillflow-skill/SKILL.md": "---\nname: skillflow-skill\ndescription: reusable guidance and when to use it\n---\n\n# SkillFlow Skill\n..."
+    "skillflow-skill/SKILL.md": "---\nname: skillflow-skill\ndescription: reusable guidance and when to use it\n---\n\n# SkillFlow Skill\n...",
+    "skillflow-skill/learned/example.md": "reusable learned material"
   }},
-  "delete_paths": []
+  "delete_paths": ["skillflow-skill/learned/obsolete.md"]
 }}
 ```
 """
@@ -389,15 +398,33 @@ Return exactly this JSON shape and no surrounding prose:
         self.max_tokens = max_tokens
         self.extra_headers = extra_headers or {}
 
-    def _constrain_to_artifact(self, patch: SkillPatchResult) -> SkillPatchResult:
-        """Reject a patch that attempts to mutate anything except ARTIFACT_PATH."""
-        invalid_paths = sorted(set(patch.upsert_files) - {self.ARTIFACT_PATH})
-        if patch.delete_paths or invalid_paths:
+    def _is_learned_path(self, path: str) -> bool:
+        prefix = f"{self.LEARNED_DIR}/"
+        return path.startswith(prefix) and self._is_safe_relative_path(path)
+
+    @staticmethod
+    def _is_safe_relative_path(path: str) -> bool:
+        if not path or "\\" in path or path.startswith("/"):
+            return False
+        parts = path.split("/")
+        return all(part not in {"", ".", ".."} for part in parts)
+
+    def _constrain_to_namespace(self, patch: SkillPatchResult) -> SkillPatchResult:
+        """Limit mutation to the runtime entry point and its private learned tree."""
+        invalid_upserts = sorted(
+            path
+            for path in patch.upsert_files
+            if path != self.ARTIFACT_PATH and not self._is_learned_path(path)
+        )
+        invalid_deletes = sorted(
+            path for path in patch.delete_paths if not self._is_learned_path(path)
+        )
+        if invalid_upserts or invalid_deletes:
             reasons: list[str] = []
-            if invalid_paths:
-                reasons.append(f"unexpected paths: {', '.join(invalid_paths)}")
-            if patch.delete_paths:
-                reasons.append("deletions are not permitted")
+            if invalid_upserts:
+                reasons.append(f"out-of-scope upserts: {', '.join(invalid_upserts)}")
+            if invalid_deletes:
+                reasons.append(f"out-of-scope deletes: {', '.join(invalid_deletes)}")
             return SkillPatchResult(
                 summary=f"Rejected out-of-scope patch ({'; '.join(reasons)}). {patch.summary}",
                 upsert_files={},
@@ -409,11 +436,10 @@ Return exactly this JSON shape and no surrounding prose:
                 successful_attempt_kind=patch.successful_attempt_kind,
             )
 
-        artifact = patch.upsert_files.get(self.ARTIFACT_PATH)
         return SkillPatchResult(
             summary=patch.summary,
-            upsert_files={self.ARTIFACT_PATH: artifact} if artifact is not None else {},
-            delete_paths=[],
+            upsert_files=dict(patch.upsert_files),
+            delete_paths=list(patch.delete_paths),
             attempt_count=patch.attempt_count,
             attempt_modes=patch.attempt_modes,
             successful_attempt=patch.successful_attempt,
@@ -828,7 +854,7 @@ Return exactly this JSON shape and no surrounding prose:
                 if isinstance(raw_delete_paths, list):
                     delete_paths = [str(path) for path in raw_delete_paths]
 
-                return self._constrain_to_artifact(
+                return self._constrain_to_namespace(
                     SkillPatchResult(
                         summary=summary,
                         upsert_files=upsert_files,
