@@ -21,6 +21,7 @@ import asyncio
 import difflib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -117,6 +118,14 @@ def load_job_config(path: Path) -> JobConfig:
 def sanitize_name(name: str) -> str:
     """将名称转为安全的目录名。"""
     return name.replace("/", "-").replace(" ", "_").strip("-_")
+
+
+def workflow_bundle_slug(name: str) -> str:
+    """Convert a task-family name to Haitun's canonical kebab-case bundle slug."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    if not slug:
+        raise ValueError(f"Cannot derive workflow bundle slug from {name!r}")
+    return slug
 
 
 def resolve_run_root_dir(base_config: JobConfig, requested_root: Path | None) -> Path:
@@ -488,6 +497,7 @@ def prepare_shared_skills_dir(
     group_name: str,
     project_template_dir: Path | None,
     state_root: str = "shared_skills",
+    method_bundle_slug: str | None = None,
 ) -> Path:
     """
     计算并准备共享技能目录。
@@ -497,9 +507,32 @@ def prepare_shared_skills_dir(
     shared_dir = job_dir / state_root / group_name
     shared_dir.mkdir(parents=True, exist_ok=True)
 
-    # 若目录为空且模板存在，则复制
+    # A Method is one canonical reusable workflow bundle per family. The host
+    # family directory is mounted as the contents of flows/workflows/, so keep
+    # the bundle slug as its one child directory.
+    if state_root == "shared_methods" and method_bundle_slug:
+        bundle_dir = shared_dir / method_bundle_slug
+        workflow_path = bundle_dir / f"{method_bundle_slug}.workflow"
+        if not any(shared_dir.iterdir()) and project_template_dir and project_template_dir.exists():
+            source_bundle = project_template_dir / "skillflow-method"
+            source_workflow = source_bundle / "skillflow-method.workflow"
+            if not source_workflow.is_file():
+                raise FileNotFoundError(f"Method template workflow not found: {source_workflow}")
+            bundle_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_workflow, workflow_path)
+            for support_name in ("instructions", "programs"):
+                source_support = source_bundle / support_name
+                if source_support.is_dir():
+                    shutil.copytree(source_support, bundle_dir / support_name)
+        if not workflow_path.is_file():
+            raise FileNotFoundError(
+                f"Expected family Method workflow at {workflow_path}; "
+                "use a fresh run directory or migrate the legacy skillflow-method bundle"
+            )
+        return shared_dir
+
+    # Other evolution modes retain the existing shared-library initialization.
     if not any(shared_dir.iterdir()) and project_template_dir and project_template_dir.exists():
-        import shutil
         for item in project_template_dir.iterdir():
             if item.is_dir():
                 dst = shared_dir / item.name
@@ -549,6 +582,14 @@ def build_group_job_config(
     # datasets：保留 dataset 名称用于 Harbor 汇总统计，但不再由 dataset 自动发现任务
     config_dict["datasets"] = [{"path": str(dataset_root), "n_tasks": 0}]
 
+    if evolution_kind == "method":
+        method_slug = workflow_bundle_slug(group_name)
+        method_path = f"flows/workflows/{method_slug}/{method_slug}.workflow"
+        for agent in config_dict.get("agents") or []:
+            agent_env = agent.get("env") or {}
+            agent_env["SKILLFLOW_METHOD_WORKFLOW_PATH"] = method_path
+            agent["env"] = agent_env
+
     # orchestrator：强制串行
     orchestrator = config_dict.get("orchestrator") or {}
     orchestrator["n_concurrent_trials"] = 1
@@ -561,7 +602,14 @@ def build_group_job_config(
     if env.get("import_path") == "libs.terminus_env.environments.shared_skills_env:SharedSkillsDockerEnvironment":
         settings = EVOLUTION_SETTINGS[evolution_kind]
         kwargs = env.get("kwargs") or {}
-        kwargs["project_template_dir"] = str(project_template_dir) if project_template_dir else None
+        # Method state is initialized above as one renamed, family-specific
+        # workflow bundle. Copying the generic template again in the trial
+        # environment would leave a second, stale ``skillflow-method`` bundle.
+        kwargs["project_template_dir"] = (
+            str(project_template_dir)
+            if project_template_dir and evolution_kind != "method"
+            else None
+        )
         kwargs["copy_task_skills"] = copy_task_skills
         kwargs["shared_skills_root"] = settings["state_root"]
         if settings["mount_targets"] is not None:
@@ -615,6 +663,11 @@ def run_group_job(
         group_name,
         runner_cfg.project_template_dir,
         state_root=EVOLUTION_SETTINGS[runner_cfg.evolution_kind]["state_root"],
+        method_bundle_slug=(
+            workflow_bundle_slug(group_name)
+            if runner_cfg.evolution_kind == "method"
+            else None
+        ),
     )
 
     # 构造 group job config
@@ -656,7 +709,7 @@ def run_group_job(
         )
     )
     evolver_class = EVOLUTION_SETTINGS[runner_cfg.evolution_kind]["evolver"]
-    evolver = evolver_class(
+    evolver_kwargs: dict[str, Any] = dict(
         model_name=patch_model_name,
         api_base=api_base,
         api_key=api_key,
@@ -664,6 +717,13 @@ def run_group_job(
         max_tokens=patch_max_tokens,
         extra_headers=extra_headers,
     )
+    if runner_cfg.evolution_kind == "method":
+        method_slug = workflow_bundle_slug(group_name)
+        evolver_kwargs.update(
+            workflow_path=f"{method_slug}/{method_slug}.workflow",
+            bundle_dir=method_slug,
+        )
+    evolver = evolver_class(**evolver_kwargs)
 
     # 定义 hook：在每次 trial 结束后调用 patch
     def on_trial_ended_hook_sync(trial_result: TrialResult) -> None:
@@ -711,6 +771,19 @@ def run_group_job(
         if verifier_path.exists():
             verifier_ctr = json.loads(verifier_path.read_text(encoding="utf-8"))
 
+        verifier_feedback_path = trial_dir / "verifier" / "test-stdout.txt"
+        verifier_feedback: str | None = None
+        if verifier_feedback_path.exists():
+            verifier_feedback = verifier_feedback_path.read_text(
+                encoding="utf-8", errors="replace"
+            )
+            # Keep the actionable tail and bound prompt growth. This output is
+            # observed only after the trial, so it cannot leak into that run.
+            if len(verifier_feedback) > 12000:
+                verifier_feedback = (
+                    "...<truncated to actionable tail>\n" + verifier_feedback[-12000:]
+                )
+
         # 提取 task 信息
         # trial_config.json 包含 task_name, source 等
         trial_config_path = trial_dir / "config.json"
@@ -743,6 +816,7 @@ def run_group_job(
             task_source=task_source,
             trial_result=trial_result_dict,
             verifier_ctr=verifier_ctr,
+            verifier_feedback=verifier_feedback,
         )
         # 覆盖 outcome 中的 reward 和 verifier_passed（优先使用 TrialResult）
         outcome.reward = reward

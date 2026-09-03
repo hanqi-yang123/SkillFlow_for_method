@@ -43,7 +43,7 @@ class EvolutionArtifactBoundaryTests(unittest.TestCase):
         self.assertIn("unexpected paths: helper.js", constrained.summary)
 
     def test_deletion_rejects_the_entire_patch(self) -> None:
-        evolver = self._evolver(MethodPatchEvolver)
+        evolver = self._evolver(WorkflowPatchEvolver)
         patch = SkillPatchResult(
             summary="attempted deletion",
             upsert_files={evolver.ARTIFACT_PATH: "replacement"},
@@ -53,6 +53,44 @@ class EvolutionArtifactBoundaryTests(unittest.TestCase):
         self.assertEqual(constrained.upsert_files, {})
         self.assertEqual(constrained.delete_paths, [])
         self.assertIn("deletions are not permitted", constrained.summary)
+
+    def test_method_accepts_supporting_files_inside_active_bundle(self) -> None:
+        evolver = MethodPatchEvolver(
+            model_name="unused",
+            workflow_path="dmaic-quality-analysis/dmaic-quality-analysis.workflow",
+            bundle_dir="dmaic-quality-analysis",
+        )
+        patch = SkillPatchResult(
+            summary="add reusable validation",
+            upsert_files={
+                evolver.WORKFLOW_PATH: "workflow source",
+                "dmaic-quality-analysis/instructions/execute.md": "instructions",
+                "dmaic-quality-analysis/programs/check.py": "print('ok')",
+                "other-family/escape.md": "not allowed",
+            },
+            delete_paths=[
+                "dmaic-quality-analysis/instructions/obsolete.md",
+                evolver.WORKFLOW_PATH,
+                "other-family/escape.md",
+            ],
+        )
+
+        constrained = evolver._constrain_to_artifact(patch)
+
+        self.assertEqual(
+            constrained.upsert_files,
+            {
+                evolver.WORKFLOW_PATH: "workflow source",
+                "dmaic-quality-analysis/instructions/execute.md": "instructions",
+                "dmaic-quality-analysis/programs/check.py": "print('ok')",
+            },
+        )
+        self.assertEqual(
+            constrained.delete_paths,
+            ["dmaic-quality-analysis/instructions/obsolete.md"],
+        )
+        self.assertIn("other-family/escape.md", constrained.summary)
+        self.assertIn(evolver.WORKFLOW_PATH, constrained.summary)
 
     def test_workflow_content_has_no_agent_or_line_limit(self) -> None:
         evolver = self._evolver(WorkflowPatchEvolver)
@@ -70,11 +108,11 @@ class EvolutionArtifactBoundaryTests(unittest.TestCase):
         unrestricted_source = "\n".join(["arbitrary method source"] * 1_000)
         patch = SkillPatchResult(
             summary="arbitrary topology is permitted",
-            upsert_files={evolver.ARTIFACT_PATH: unrestricted_source},
+            upsert_files={evolver.WORKFLOW_PATH: unrestricted_source},
             delete_paths=[],
         )
         constrained = evolver._constrain_to_artifact(patch)
-        self.assertEqual(constrained.upsert_files[evolver.ARTIFACT_PATH], unrestricted_source)
+        self.assertEqual(constrained.upsert_files[evolver.WORKFLOW_PATH], unrestricted_source)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ import json
 import os
 import shlex
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import litellm
@@ -203,28 +203,50 @@ class NoInstallHaitun(_NoInstallSetupMixin, ClaudeCode):
         prompt = instruction
         materialize = 'cp -a /mnt/learning/. "$AGENT_DIR/skills/"'
         runtime_preflight = ":"
+        usage_roots = "/workspace/.psi/fusion-flow/runs"
         if self.learning_mode == "method":
+            method_instruction = (
+                f"{instruction}\n\n"
+                "If the benchmark instruction conflicts with the provided source materials, "
+                "treat the source materials as authoritative, record the discrepancy truthfully, "
+                "and continue without prolonged deliberation."
+            )
+            workflow_path = (
+                self._haitun_runtime_env.get("SKILLFLOW_METHOD_WORKFLOW_PATH")
+                or "flows/workflows/skillflow-method/skillflow-method.workflow"
+            ).strip()
+            workflow_parts = PurePosixPath(workflow_path)
+            if (
+                workflow_parts.is_absolute()
+                or workflow_parts.suffix != ".workflow"
+                or workflow_parts.parts[:2] != ("flows", "workflows")
+                or any(part in {"", ".", ".."} for part in workflow_parts.parts)
+            ):
+                raise ValueError(f"Invalid Haitun Method workflow path: {workflow_path!r}")
+            absolute_workflow_path = f"/workspace/{workflow_path}"
+            workflow_bundle_path = str(PurePosixPath(absolute_workflow_path).parent)
             materialize = "cp -a /mnt/learning/. /workspace/flows/workflows/"
-            runtime_preflight = '''for required in \
+            usage_roots += f" {shlex.quote(f'{workflow_bundle_path}/runs')}"
+            runtime_preflight = f'''for required in \
   "$AGENT_DIR/tools/bash.py" \
   "$AGENT_DIR/tools/read.py" \
   "$AGENT_DIR/tools/write.py" \
   "$AGENT_DIR/tools/run_flow.py" \
   "$AGENT_DIR/skills/workflow/SKILL.md" \
-  "/workspace/flows/workflows/skillflow-method/skillflow-method.workflow"; do
+  "{absolute_workflow_path}"; do
   if [ ! -f "$required" ]; then
-    echo "Missing required Haitun Method runtime file: $required" >&2
+    echo "Missing required Haitun workflow runtime file: $required" >&2
     exit 1
   fi
 done'''
             prompt = (
-                "Use the preloaded Haitun Method at "
-                "`flows/workflows/skillflow-method/skillflow-method.workflow`. "
+                "Use the preloaded Haitun workflow at "
+                f"`{workflow_path}`. "
                 "Read its declared input, then call `run_flow` exactly once with "
                 "the current benchmark instruction as the `task_instruction` "
-                "artifact. Do not bypass, re-author, or simulate the Method. "
+                "artifact. Do not bypass, re-author, or simulate the workflow. "
                 "After `run_flow` returns, report its output artifact mapping.\n\n"
-                f"Benchmark instruction:\n{instruction}"
+                f"Benchmark instruction:\n{method_instruction}"
             )
 
         script = f'''set -euo pipefail
@@ -272,7 +294,7 @@ usage_index=0
 while IFS= read -r usage_file; do
   cp "$usage_file" "/logs/agent/haitun-workflow-token-usage-$usage_index.json"
   usage_index=$((usage_index + 1))
-done < <(find /workspace/.psi/fusion-flow/runs -type f -name token-usage.json 2>/dev/null | sort)
+done < <(find {usage_roots} -type f -name token-usage.json 2>/dev/null | sort -u)
 exit "$CHANNEL_STATUS"
 '''
         await self.exec_as_agent(environment, command="bash -lc " + shlex.quote(script))

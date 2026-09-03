@@ -62,6 +62,8 @@ class TrialOutcome:
     compacted_trajectory: list[dict[str, Any]]
     # 最终 agent 回复（可选）
     final_agent_message: str | None
+    # verifier 的可操作失败输出（可选）；仅用于题后学习
+    verifier_feedback: str | None = None
 
 
 def ensure_standard_trajectory(trial_dir: Path) -> Path | None:
@@ -190,6 +192,7 @@ class TrajectoryCompactor:
         task_source: str,
         trial_result: dict[str, Any] | None,
         verifier_ctr: dict[str, Any] | None,
+        verifier_feedback: str | None = None,
     ) -> TrialOutcome:
         """
         从 trajectory + result + verifier 构造精简的 TrialOutcome。
@@ -243,6 +246,7 @@ class TrajectoryCompactor:
             failed_test_names=failed_test_names,
             compacted_trajectory=compacted,
             final_agent_message=final_agent_message,
+            verifier_feedback=verifier_feedback,
         )
 
 
@@ -642,6 +646,10 @@ Return exactly this JSON shape and no surrounding prose:
         if compact_mode and len(final_message) > 2000:
             final_message = final_message[:2000] + "\n...<truncated>"
 
+        verifier_feedback = outcome.verifier_feedback or "<none>"
+        if compact_mode and len(verifier_feedback) > 6000:
+            verifier_feedback = "...<truncated to actionable tail>\n" + verifier_feedback[-6000:]
+
         exception_info = "None"
         if outcome.exception_type:
             exception_info = f"{outcome.exception_type}: {outcome.exception_message}"
@@ -655,6 +663,7 @@ Return exactly this JSON shape and no surrounding prose:
             reward=outcome.reward,
             exception_info=exception_info,
             failed_tests=json.dumps(outcome.failed_test_names, ensure_ascii=False),
+            verifier_feedback=verifier_feedback,
             trajectory_json=trajectory_json,
             final_message=final_message,
         )
