@@ -771,6 +771,19 @@ def run_group_job(
         if verifier_path.exists():
             verifier_ctr = json.loads(verifier_path.read_text(encoding="utf-8"))
 
+        verifier_feedback_path = trial_dir / "verifier" / "test-stdout.txt"
+        verifier_feedback: str | None = None
+        if verifier_feedback_path.exists():
+            verifier_feedback = verifier_feedback_path.read_text(
+                encoding="utf-8", errors="replace"
+            )
+            # Keep the actionable tail and bound prompt growth. This output is
+            # observed only after the trial, so it cannot leak into that run.
+            if len(verifier_feedback) > 12000:
+                verifier_feedback = (
+                    "...<truncated to actionable tail>\n" + verifier_feedback[-12000:]
+                )
+
         # 提取 task 信息
         # trial_config.json 包含 task_name, source 等
         trial_config_path = trial_dir / "config.json"
@@ -803,6 +816,7 @@ def run_group_job(
             task_source=task_source,
             trial_result=trial_result_dict,
             verifier_ctr=verifier_ctr,
+            verifier_feedback=verifier_feedback,
         )
         # 覆盖 outcome 中的 reward 和 verifier_passed（优先使用 TrialResult）
         outcome.reward = reward

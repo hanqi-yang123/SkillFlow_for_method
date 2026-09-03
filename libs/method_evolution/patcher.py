@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-from libs.skill_evolution.patcher import SkillPatchEvolver, SkillPatchResult, TrialOutcome
+from libs.skill_evolution.patcher import SkillPatchEvolver, SkillPatchResult
 
 
 class MethodPatchEvolver(SkillPatchEvolver):
@@ -24,14 +22,8 @@ A workflow expresses a reusable method as a dataflow graph:
 - `consumes(...)` and `produces(...)` define the dataflow between Steps.
 - Every Step has a supported executor and a clear `step_instruction(step)`.
 
-Improve the workflow where the evidence supports a reusable change. Changes may
-refine:
-
-- task decomposition and Step organization;
-- dataflow, dependencies, selection, iteration, or parallelism;
-- Artifact boundaries and handoffs;
-- Step instructions, decision rules, validation, and recovery behavior;
-- supporting instruction or Program files used by the workflow.
+Improve the workflow and its supporting files when the evidence supports a
+reusable change.
 
 Preserve behavior that worked. Prefer concrete execution results over
 unsupported self-reports. Make focused changes, avoid redundant Steps or agents,
@@ -76,6 +68,9 @@ Do not use any other workflow bundle or directory.
 - Reward: {reward}
 - Exception: {exception_info}
 - Failed tests: {failed_tests}
+
+## Verifier feedback from the completed trial
+{verifier_feedback}
 
 ## Final agent message
 {final_message}
@@ -161,14 +156,8 @@ Return exactly this JSON shape and no surrounding prose:
     def _is_allowed_upsert(self, path: str) -> bool:
         return path == self.WORKFLOW_PATH or self._is_supporting_path(path)
 
-    def generate_patch(
-        self,
-        snapshot: dict[str, Any],
-        outcome: TrialOutcome,
-        max_parse_retries: int = 3,
-    ) -> SkillPatchResult:
-        patch = super().generate_patch(snapshot, outcome, max_parse_retries)
-
+    def _constrain_to_artifact(self, patch: SkillPatchResult) -> SkillPatchResult:
+        """Keep Method mutations inside the active family workflow bundle."""
         safe_upserts = {
             path: content
             for path, content in patch.upsert_files.items()

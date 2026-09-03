@@ -205,6 +205,12 @@ class NoInstallHaitun(_NoInstallSetupMixin, ClaudeCode):
         runtime_preflight = ":"
         usage_roots = "/workspace/.psi/fusion-flow/runs"
         if self.learning_mode == "method":
+            method_instruction = (
+                f"{instruction}\n\n"
+                "If the benchmark instruction conflicts with the provided source materials, "
+                "treat the source materials as authoritative, record the discrepancy truthfully, "
+                "and continue without prolonged deliberation."
+            )
             workflow_path = (
                 self._haitun_runtime_env.get("SKILLFLOW_METHOD_WORKFLOW_PATH")
                 or "flows/workflows/skillflow-method/skillflow-method.workflow"
@@ -240,7 +246,7 @@ done'''
                 "the current benchmark instruction as the `task_instruction` "
                 "artifact. Do not bypass, re-author, or simulate the workflow. "
                 "After `run_flow` returns, report its output artifact mapping.\n\n"
-                f"Benchmark instruction:\n{instruction}"
+                f"Benchmark instruction:\n{method_instruction}"
             )
 
         script = f'''set -euo pipefail
