@@ -86,12 +86,13 @@ bash docker/haitun-agent/build.sh
 python iterative_shared_skills_runner.py --config configs/method.yaml --evolution-kind method
 ```
 
-Their mutation budgets are intentionally symmetric: Skill may update only
-`skillflow-skill/SKILL.md`, Method only
-`skillflow-method/skillflow-method.workflow`, and executable Workflow only
-`dynamic-task-solver.js`. Deletions and additional files are rejected as a
-whole patch. Method and executable Workflow have no imposed line, agent-count,
-or graph-topology limits.
+Method mode initializes one canonical Haitun bundle per task family at
+`flows/workflows/<family-slug>/<family-slug>.workflow`. Evolution may update
+that workflow and supporting `instructions/**` or `programs/**` files inside
+the same bundle; paths outside the active family bundle are rejected. Method
+and executable Workflow have no imposed line, agent-count, or graph-topology
+limits. Skill and executable Workflow retain their single-artifact mutation
+boundaries.
 
 Workflow mode sets `SKILLFLOW_EXECUTABLE_WORKFLOW=dynamic-task-solver`, mounts
 the JavaScript artifact in Claude's Workflow directory, and writes a session
