@@ -1,0 +1,22 @@
+{
+  "Financial-Statement-Rolling": [
+    "solstice_commission_asset_alignment",
+    "orchid_project_cost_rollforward"
+  ],
+  "Sales-Pivot-Analysis": [
+    "inventory-multi-warehouse-pivot",
+    "quality-control-pivot"
+  ],
+  "Cross-Format-Data-Reconciliation": [
+    "04-university-program-funding-diff",
+    "05-datacenter-hardware-registry-diff"
+  ],
+  "SEC-13F-Financial-Analysis": [
+    "fund-class-breakdown",
+    "issuer-ownership-rollup"
+  ],
+  "Document-Fraud-Detection": [
+    "clinic-shift-claim-review",
+    "fleet-maintenance-chargeback-audit"
+  ]
+}

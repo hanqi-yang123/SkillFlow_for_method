@@ -33,6 +33,8 @@ RUN /root/.local/bin/uv sync --frozen --no-dev \
         /opt/haitun-agent/examples/haitun-workspace/TOOLS.md \
         /opt/haitun-agent/examples/haitun-workspace/BOOTSTRAP.md \
     && test -f /opt/haitun-agent/examples/haitun-workspace/tools/run_flow.py \
+    && test -f /opt/haitun-agent/examples/haitun-workspace/tools/_user_profile.py \
+    && test -f /opt/haitun-agent/examples/haitun-workspace/tools/_background_process_registry.py \
     && test -f /opt/haitun-agent/examples/haitun-workspace/skills/workflow/SKILL.md \
     && test -f /opt/haitun-agent/examples/haitun-workspace/skills/workflow/fusion_flow/workflow_runner.py
 

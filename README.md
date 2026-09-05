@@ -94,6 +94,21 @@ and executable Workflow have no imposed line, agent-count, or graph-topology
 limits. Skill and executable Workflow retain their single-artifact mutation
 boundaries.
 
+For a repeatable Method-only run, use the wrapper and optional task manifest:
+
+```bash
+export PSI_AI_API_KEY="..."
+bash docker/haitun-agent/build.sh
+python haitun_method_runner.py \
+  --config configs/haitun_method.example.yaml \
+  --task-manifest configs/haitun_tasks.example.json \
+  --max-parallel-groups 1
+```
+
+The manifest maps each configured task family to an ordered subset. Config
+values written as `${NAME}` are resolved from the process environment; secret
+files and literal credentials are not required.
+
 Workflow mode sets `SKILLFLOW_EXECUTABLE_WORKFLOW=dynamic-task-solver`, mounts
 the JavaScript artifact in Claude's Workflow directory, and writes a session
 permission rule denying `Skill(dynamic-task-solver)`. This prevents the parent
