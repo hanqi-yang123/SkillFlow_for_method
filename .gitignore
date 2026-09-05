@@ -1,0 +1,35 @@
+# Local credentials and environment overrides
+API_Key.txt
+.env
+.env.*
+!.env.example
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime output
+jobs/
+reports/
+cache/
+*.pid
+*.log
+
+# Benchmark data is supplied separately and can contain large files
+test_tasks/
+
+# Learned runtime state
+shared_skills/
+shared_methods/
+shared_workflows/
+
+# Editor and operating-system metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
