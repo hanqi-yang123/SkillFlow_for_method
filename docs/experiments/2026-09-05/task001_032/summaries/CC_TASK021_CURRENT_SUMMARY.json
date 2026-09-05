@@ -1,0 +1,46 @@
+{
+  "source_file": "CC_DYNAMIC_WORKFLOW_TASK021_030_EXPERIMENT_DATA.json",
+  "selected_task_ids": [
+    "task021"
+  ],
+  "selection_note": "Only these task rows remain current; all other rows in the source batch are superseded or nonstandard.",
+  "tasks": [
+    {
+      "sequence": 1,
+      "task_id": "task021",
+      "family": "Distribution-Center-Auditing",
+      "task": "harbor_timesheet_policy_audit",
+      "trial": "harbor_timesheet_policy_audit__T2vR8zf",
+      "started_at": "2026-08-31T06:43:11.619147Z",
+      "finished_at": "2026-08-31T06:48:10.023441Z",
+      "duration_seconds": 298.404294,
+      "reward": 1.0,
+      "verifier_passed": true,
+      "failed_test_names": [],
+      "input_tokens": 157303,
+      "cache_tokens": 69798,
+      "output_tokens": 2647,
+      "cost_usd": 1.5442429999999998,
+      "exception": null,
+      "workflow_valid": true,
+      "workflow_call_count": 1,
+      "matching_workflow_call_count": 1,
+      "workflow_infrastructure_error": false,
+      "workflow_infrastructure_errors": [],
+      "valid_dynamic_workflow_experiment_result": true,
+      "workflow_internal_usage_available": true,
+      "workflow_internal_tokens_observed": 50443,
+      "workflow_internal_tool_calls_observed": 14,
+      "workflow_task_instances_observed": 1,
+      "evolution_content_updated": true,
+      "evolution_upserted": [
+        "dynamic-task-solver.js"
+      ],
+      "evolution_deleted": [],
+      "evolution_errors": [],
+      "evolution_summary": "Verifier passed (reward 1.0), so the executor -> independent auditor/fixer graph, effort levels, and validation rules are kept unchanged. The only defect visible in the trace is workspace hygiene: the run left helper scripts (build/verify .py) sitting next to the deliverables in the output directory, forcing the parent agent to ask the user whether to delete them. Some acceptance checks scan the output directory for unexpected artifacts, so this is a reusable risk, not a task-specific one. Added a single reusable rule to both agent prompts: keep scratch/builder/verifier scripts in a temporary scratch location (or remove them once the deliverables are validated) so only the requested deliverables remain at the requested paths, while never deleting task inputs or deliverables. The auditor also now explicitly checks the deliverable directory for stray generated artifacts as part of its independent inspection.",
+      "patch_attempt_count": 1,
+      "verifier_feedback": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0 -- /usr/bin/python3\ncachedir: .pytest_cache\nrootdir: /tests\nplugins: json-ctrf-0.3.5\ncollecting ... collected 1 item\n\n../tests/test_output.py::test_legacy_pytest_suite PASSED                 [100%]\n\n==================================== PASSES ====================================\n=========================== short test summary info ============================\nPASSED ../tests/test_output.py::test_legacy_pytest_suite\n============================== 1 passed in 0.46s ===============================\n"
+    }
+  ]
+}
