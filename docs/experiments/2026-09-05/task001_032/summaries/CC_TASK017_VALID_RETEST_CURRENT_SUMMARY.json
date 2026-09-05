@@ -1,0 +1,17 @@
+{
+  "system": "CC Dynamic Workflow",
+  "task_id": "task017",
+  "task_name": "harbor_logistics_chain_03",
+  "run_date": "2026-09-04",
+  "run_root": "jobs/cc-dw-executable-task017-retest-20260904-1445",
+  "trial": "cc-dynamic-workflow-task017-retest-proxy__DMAIC-Quality-Analysis/harbor_logistics_chain_03__8YSUYuR",
+  "reward": 0,
+  "checkpoints_passed": 1,
+  "checkpoints_failed": 8,
+  "checkpoints_total": 9,
+  "workflow_valid": true,
+  "infrastructure_error": false,
+  "override": "Replaces the earlier 0/9 trial affected by Cloudflare 524 and zero Workflow calls.",
+  "local_raw_trial_available": false,
+  "evidence_note": "Extracted from the accepted-results section of OPUS5_SELECTED_TASKS_FUNCTION_CHECKPOINT_COMPARISON_PARTIAL_20260902.md before that mixed comparison report was archived."
+}

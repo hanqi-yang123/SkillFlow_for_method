@@ -1,0 +1,124 @@
+{
+  "experiment": {
+    "method": "Method-only self-learning",
+    "model": "claude-opus-5",
+    "provider": "anthropic",
+    "reasoning_effort": "none",
+    "timeout_seconds_per_task": 3600,
+    "execution": "serial within family, official difficulty order",
+    "order": [33, 34, 37, 35, 36],
+    "server_run_root": "jobs/haitun-method-opus5-task033-037-simpleprompt-20260904-022651",
+    "local_raw_root": "local-archive/HAITUN_METHOD_033_037_20260904_RAW",
+    "raw_file_count": 162,
+    "raw_size_bytes": 1861012
+  },
+  "summary": {
+    "completed": 5,
+    "total": 5,
+    "reward_passed": 0,
+    "reward_failed": 5,
+    "visible_checkpoints_passed": 10,
+    "visible_checkpoints_failed": 5,
+    "runtime_exceptions": 0,
+    "note": "Each verifier was fail-fast. Checks after the first A2 title mismatch were not executed and are not counted."
+  },
+  "tasks": [
+    {
+      "task_number": 33,
+      "task_name": "cedar_accrual_rollforward",
+      "trial_name": "cedar_accrual_rollforward__2xWxZxn",
+      "reward": 0.0,
+      "exception_info": null,
+      "visible_checkpoints": {"passed": 2, "failed": 1},
+      "passed": ["Output workbook exists", "Sheet names and order are correct"],
+      "first_failure": "Payroll Accrual #2105!A2 title mismatch",
+      "started_at": "2026-09-04T02:27:13.229571Z",
+      "finished_at": "2026-09-04T02:33:43.864131Z",
+      "learning_patch_applied": true,
+      "learning_patch_errors": [],
+      "learning_summary": "Split the method into source survey, workbook build, and independent audit; added cell-level title-block specification and explicit validation reporting."
+    },
+    {
+      "task_number": 34,
+      "task_name": "northstar_warranty_reserve_consolidation",
+      "trial_name": "northstar_warranty_reserve_conso__iNit6cJ",
+      "reward": 0.0,
+      "exception_info": null,
+      "visible_checkpoints": {"passed": 2, "failed": 1},
+      "passed": ["Output workbook exists", "Sheet names and order are correct"],
+      "first_failure": "Consumer Warranty #2440!A2 title mismatch",
+      "started_at": "2026-09-04T02:35:50.986093Z",
+      "finished_at": "2026-09-04T02:50:48.979427Z",
+      "learning_patch_applied": true,
+      "learning_patch_errors": [],
+      "learning_summary": "Required full string harvesting from routing files, added title-block conventions, and broadened verifier-path probing."
+    },
+    {
+      "task_number": 37,
+      "task_name": "solstice_commission_asset_alignment",
+      "trial_name": "solstice_commission_asset_alignm__nLywDdB",
+      "reward": 0.0,
+      "exception_info": null,
+      "visible_checkpoints": {"passed": 2, "failed": 1},
+      "passed": ["Output workbook exists", "Sheet names and order are correct"],
+      "first_failure": "Field Comm Asset #1510!A2 title mismatch",
+      "started_at": "2026-09-04T02:53:04.522500Z",
+      "finished_at": "2026-09-04T03:24:43.945930Z",
+      "learning_patch_applied": true,
+      "learning_patch_errors": [],
+      "learning_summary": "Added exhaustive provenance-tagged source string inventory, deterministic title ranking, and programs/list_source_strings.py."
+    },
+    {
+      "task_number": 35,
+      "task_name": "orchid_project_cost_rollforward",
+      "trial_name": "orchid_project_cost_rollforward__jdcX9r7",
+      "reward": 0.0,
+      "exception_info": null,
+      "visible_checkpoints": {"passed": 2, "failed": 1},
+      "passed": ["Output workbook exists", "Sheet names and order are correct"],
+      "first_failure": "Cap Impl #1460!A2 title mismatch",
+      "started_at": "2026-09-04T03:27:46.114610Z",
+      "finished_at": "2026-09-04T03:42:16.429533Z",
+      "agent_usage": {
+        "model_calls": 38,
+        "input_tokens": 966845,
+        "cached_input_tokens": 727158,
+        "output_tokens": 23892,
+        "cost_usd": 2.159314
+      },
+      "learning_patch_applied": true,
+      "learning_patch_errors": [],
+      "learning_summary": "Promoted account-code title provenance to a hard rule, added programs/check_title_provenance.py, and documented import-time fail-fast verifier semantics."
+    },
+    {
+      "task_number": 36,
+      "task_name": "peregrine_rebate_template_update",
+      "trial_name": "peregrine_rebate_template_update__m4moRuS",
+      "reward": 0.0,
+      "exception_info": null,
+      "visible_checkpoints": {"passed": 2, "failed": 1},
+      "passed": ["Output workbook exists", "Sheet names and order are correct"],
+      "first_failure": "Channel Rebates #6120!A2 title mismatch",
+      "started_at": "2026-09-04T03:46:23.760937Z",
+      "finished_at": "2026-09-04T04:09:02.868215Z",
+      "learning_patch_applied": true,
+      "learning_patch_errors": [],
+      "learning_summary": "Extended source inventory and title-provenance checks to Excel templates; prioritized same-address template cells and required preservation of template title rows."
+    }
+  ],
+  "final_workflow": {
+    "relative_path": "shared_methods/Financial-Statement-Rolling/financial-statement-rolling/financial-statement-rolling.workflow",
+    "server_modified_at": "2026-09-04T04:13:27.041757Z",
+    "size_bytes": 18405,
+    "sha256": "5823b19e05466aee799e16174436b29356f5f4653102406afce0f2bf3459c4f1",
+    "support_files": [
+      "instructions/survey_sources.md",
+      "instructions/build_workbook.md",
+      "instructions/audit_workbook.md",
+      "instructions/title_block_conventions.md",
+      "programs/list_source_strings.py",
+      "programs/check_title_provenance.py"
+    ],
+    "verification_status": "The final post-task036 update has not yet been validated by rerunning a task."
+  }
+}
