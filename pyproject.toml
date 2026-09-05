@@ -60,5 +60,6 @@ warn_unused_ignores = true
 dev = [
     "mypy>=1.13.0",
     "pre-commit>=4.0.0",
+    "pytest>=8.3.0",
     "ruff>=0.8.0",
 ]

@@ -96,6 +96,8 @@ class RunnerConfig:
     patch_temperature: float = 0.2
     # LLM patch 最大输出 tokens
     patch_max_tokens: int = 8192
+    # Optional family -> ordered task-name selection for reproducible subsets.
+    task_manifest_path: Path | None = None
 
 
 @dataclass
@@ -112,7 +114,28 @@ def load_job_config(path: Path) -> JobConfig:
     """从 YAML 加载 JobConfig。"""
     with open(path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    return JobConfig.model_validate(data)
+    return JobConfig.model_validate(expand_config_environment(data))
+
+
+_ENV_REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def expand_config_environment(value: Any) -> Any:
+    """Expand ``${NAME}`` references without reading credentials from files."""
+    if isinstance(value, dict):
+        return {key: expand_config_environment(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [expand_config_environment(item) for item in value]
+    if not isinstance(value, str):
+        return value
+
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if name not in os.environ:
+            raise ValueError(f"Environment variable {name!r} is required by the config")
+        return os.environ[name]
+
+    return _ENV_REFERENCE.sub(replace, value)
 
 
 def sanitize_name(name: str) -> str:
@@ -216,6 +239,48 @@ def resolve_group_task_paths(dataset_path: Path, disable_verification: bool) -> 
         )
 
     return ordered_paths + remaining_paths
+
+
+def load_task_manifest(path: Path | None) -> dict[str, list[str]]:
+    """Load a family-to-task manifest used to reproduce an exact task subset."""
+    if path is None:
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"Task manifest must be a JSON object: {path}")
+
+    manifest: dict[str, list[str]] = {}
+    for family, task_names in data.items():
+        if not isinstance(family, str) or not family.strip():
+            raise ValueError(f"Task manifest contains an invalid family name: {family!r}")
+        if not isinstance(task_names, list) or any(
+            not isinstance(name, str) or not name.strip() for name in task_names
+        ):
+            raise ValueError(f"Task manifest family {family!r} must contain task names")
+        cleaned = [name.strip() for name in task_names]
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError(f"Task manifest family {family!r} contains duplicate tasks")
+        manifest[family.strip()] = cleaned
+    return manifest
+
+
+def select_manifest_tasks(
+    task_paths: list[Path],
+    group_name: str,
+    manifest: dict[str, list[str]],
+) -> list[Path]:
+    """Select tasks in manifest order and fail when requested tasks are absent."""
+    if not manifest:
+        return task_paths
+    requested = manifest.get(group_name)
+    if requested is None:
+        return []
+
+    task_by_name = {path.name: path for path in task_paths}
+    missing = [name for name in requested if name not in task_by_name]
+    if missing:
+        raise ValueError(f"Manifest requests unknown tasks for {group_name}: {missing}")
+    return [task_by_name[name] for name in requested]
 
 
 def resolve_trial_dir(trial_uri: str) -> Path:
@@ -648,6 +713,13 @@ def run_group_job(
     base_config_dict = base_config.model_dump()
     disable_verification = bool((base_config_dict.get("verifier") or {}).get("disable", False))
     task_paths = resolve_group_task_paths(dataset_path, disable_verification=disable_verification)
+    task_paths = select_manifest_tasks(
+        task_paths,
+        group_name,
+        load_task_manifest(runner_cfg.task_manifest_path),
+    )
+    if not task_paths:
+        raise ValueError(f"No tasks selected for group: {group_name}")
     should_run, preparation_message = prepare_group_job_dir(job_dir, task_paths)
     if not should_run:
         return GroupResult(
@@ -980,6 +1052,8 @@ def run_group_in_subprocess(
         args.append("--copy-task-skills")
     if runner_cfg.run_root_dir:
         args.extend(["--run-root-dir", str(runner_cfg.run_root_dir)])
+    if runner_cfg.task_manifest_path:
+        args.extend(["--task-manifest", str(runner_cfg.task_manifest_path)])
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
@@ -1028,6 +1102,12 @@ def main() -> None:
     parser.add_argument("--patch-temperature", type=float, default=0.2, help="LLM patch 温度")
     parser.add_argument("--patch-max-tokens", type=int, default=16384, help="LLM patch 最大输出 tokens；Kimi 之类模型建议适当调大")
     parser.add_argument(
+        "--task-manifest",
+        type=Path,
+        default=None,
+        help="JSON mapping of family names to an ordered task subset",
+    )
+    parser.add_argument(
         "--evolution-kind",
         choices=sorted(EVOLUTION_SETTINGS),
         default="skill",
@@ -1053,6 +1133,7 @@ def main() -> None:
         max_obs_chars=args.max_obs_chars,
         patch_temperature=args.patch_temperature,
         patch_max_tokens=args.patch_max_tokens,
+        task_manifest_path=args.task_manifest,
     )
 
     # 默认 project_template_dir
@@ -1093,6 +1174,14 @@ def main() -> None:
     if not datasets:
         print("No datasets in config.", file=sys.stderr)
         sys.exit(1)
+
+    manifest = load_task_manifest(runner_cfg.task_manifest_path)
+    if manifest:
+        configured_families = {Path(dataset.path).name for dataset in datasets}
+        unknown_families = sorted(set(manifest) - configured_families)
+        if unknown_families:
+            parser.error(f"Task manifest contains unconfigured families: {unknown_families}")
+        datasets = [dataset for dataset in datasets if Path(dataset.path).name in manifest]
 
     # 并发运行所有 group
     import concurrent.futures
